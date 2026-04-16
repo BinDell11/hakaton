@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ИИ-помощник Lean — MVP</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Geologica:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efeb;
+    --border: #e2e1dc;
+    --border2: #cccac3;
+    --text: #1a1917;
+    --text2: #6b6861;
+    --text3: #9c9a94;
+    --blue: #1a3a6b;
+    --blue-light: #e8eef7;
+    --blue-mid: #2e5fa3;
+    --green: #1a6b3a;
+    --green-light: #e8f5ee;
+    --amber: #7a4a00;
+    --amber-light: #fef3e2;
+    --red: #6b1a1a;
+    --red-light: #fde8e8;
+    --accent: #2e5fa3;
+    --radius: 10px;
+    --radius-lg: 16px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+    --font: 'Geologica', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Layout ── */
+  .app { display: grid; grid-template-columns: 260px 1fr; grid-template-rows: 56px 1fr; height: 100vh; overflow: hidden; }
+
+  /* ── Header ── */
+  .header { grid-column: 1 / -1; background: var(--blue); display: flex; align-items: center; padding: 0 20px; gap: 12px; }
+  .header-logo { width: 32px; height: 32px; background: rgba(255,255,255,0.15); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .header-logo svg { width: 18px; height: 18px; fill: white; }
+  .header-title { font-size: 15px; font-weight: 600; color: white; letter-spacing: -0.01em; }
+  .header-sub { font-size: 12px; color: rgba(255,255,255,0.55); margin-left: 4px; }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; }
+  .status-dot.offline { background: #f44336; }
+  .status-label { font-size: 12px; color: rgba(255,255,255,0.6); }
+  .model-badge { font-size: 11px; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); padding: 3px 8px; border-radius: 4px; font-family: var(--mono); }
+
+  /* ── Sidebar ── */
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+  .sidebar-section { padding: 16px 12px 8px; }
+  .sidebar-label { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; padding: 0 4px; margin-bottom: 6px; }
+  .sidebar-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius); border: none; background: transparent; cursor: pointer; font-family: var(--font); font-size: 13.5px; color: var(--text2); transition: all 0.15s; text-align: left; }
+  .sidebar-btn:hover { background: var(--surface2); color: var(--text); }
+  .sidebar-btn.active { background: var(--blue-light); color: var(--blue); font-weight: 500; }
+  .sidebar-btn svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.7; }
+  .sidebar-btn.active svg { opacity: 1; }
+  .sidebar-divider { height: 1px; background: var(--border); margin: 8px 12px; }
+  .sidebar-history { padding: 8px 12px; flex: 1; }
+  .history-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--text2); line-height: 1.4; margin-bottom: 3px; }
+  .history-item:hover { background: var(--surface2); }
+  .history-item .hi-date { font-size: 10px; color: var(--text3); margin-bottom: 2px; }
+  .history-item .hi-type { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-right: 4px; font-weight: 500; }
+  .hi-type.protocol { background: var(--blue-light); color: var(--blue); }
+  .hi-type.passport { background: var(--green-light); color: var(--green); }
+
+  /* ── Main ── */
+  .main { display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; background: var(--surface); gap: 0; }
+  .tab { padding: 14px 16px; font-size: 13.5px; font-weight: 500; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; white-space: nowrap; }
+  .tab:hover { color: var(--text2); }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+  /* ── Panel ── */
+  .panel { flex: 1; overflow-y: auto; padding: 24px; display: none; }
+  .panel.active { display: block; }
+
+  /* ── Cards ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .card-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card-title svg { width: 16px; height: 16px; }
+
+  /* ── Doc Type Selector ── */
+  .doc-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .doc-type-btn { padding: 14px 16px; border-radius: var(--radius); border: 1.5px solid var(--border); background: var(--surface); cursor: pointer; text-align: left; transition: all 0.15s; font-family: var(--font); }
+  .doc-type-btn:hover { border-color: var(--border2); }
+  .doc-type-btn.selected { border-color: var(--accent); background: var(--blue-light); }
+  .doc-type-btn .dtb-icon { font-size: 22px; margin-bottom: 6px; }
+  .doc-type-btn .dtb-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .doc-type-btn .dtb-desc { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* ── Input area ── */
+  .input-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .input-area { flex: 1; }
+  textarea { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-family: var(--font); font-size: 13.5px; line-height: 1.6; resize: vertical; min-height: 130px; background: var(--surface); color: var(--text); transition: border-color 0.15s; outline: none; }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--text3); }
+
+  /* ── Upload zone ── */
+  .upload-zone { border: 1.5px dashed var(--border2); border-radius: var(--radius); padding: 20px; text-align: center; cursor: pointer; transition: all 0.15s; background: var(--surface2); }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: var(--blue-light); }
+  .upload-zone svg { width: 28px; height: 28px; color: var(--text3); margin-bottom: 8px; }
+  .upload-zone .uz-title { font-size: 13px; font-weight: 500; color: var(--text2); }
+  .upload-zone .uz-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+  #audio-input { display: none; }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: var(--radius); border: none; font-family: var(--font); font-size: 13.5px; font-weight: 500; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .btn-primary { background: var(--blue); color: white; }
+  .btn-primary:hover { background: var(--blue-mid); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-success { background: var(--green); color: white; }
+  .btn-success:hover { filter: brightness(1.1); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn svg { width: 15px; height: 15px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ── Steps ── */
+  .steps { display: flex; align-items: center; gap: 0; margin-bottom: 20px; }
+  .step { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text3); }
+  .step-num { width: 24px; height: 24px; border-radius: 50%; background: var(--surface2); border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .step.active .step-num { background: var(--blue); border-color: var(--blue); color: white; }
+  .step.done .step-num { background: var(--green); border-color: var(--green); color: white; }
+  .step.active { color: var(--text); font-weight: 500; }
+  .step.done { color: var(--text2); }
+  .step-line { flex: 1; height: 1px; background: var(--border); min-width: 20px; }
+
+  /* ── Result panel ── */
+  .result-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+  .result-header { padding: 14px 18px; background: var(--surface2); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .result-title { font-size: 13px; font-weight: 600; }
+  .result-body { padding: 18px; }
+  .field-row { display: grid; grid-template-columns: 160px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); align-items: start; }
+  .field-row:last-child { border-bottom: none; }
+  .field-label { font-size: 12px; font-weight: 500; color: var(--text3); padding-top: 1px; }
+  .field-value { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .field-value.list { padding-left: 0; }
+  .field-value.list li { list-style: none; padding: 2px 0; padding-left: 14px; position: relative; }
+  .field-value.list li::before { content: '—'; position: absolute; left: 0; color: var(--text3); }
+  .field-value.table { width: 100%; }
+  .field-value.table th { text-align: left; font-size: 11px; color: var(--text3); padding: 4px 8px; background: var(--surface2); }
+  .field-value.table td { font-size: 12px; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: var(--green); }
+
+  /* ── Chat ── */
+  .chat-wrap { display: flex; flex-direction: column; height: 100%; }
+  .chat-doc-selector { padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 10px; }
+  .chat-doc-selector label { font-size: 13px; color: var(--text2); }
+  .chat-doc-selector select { border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; font-family: var(--font); font-size: 13px; background: var(--surface); color: var(--text); outline: none; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 75%; }
+  .msg.user { align-self: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+  .msg-bubble { padding: 10px 14px; border-radius: 14px; font-size: 13.5px; line-height: 1.6; }
+  .msg.user .msg-bubble { background: var(--blue); color: white; border-bottom-right-radius: 4px; }
+  .msg.assistant .msg-bubble { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
+  .msg-time { font-size: 10px; color: var(--text3); margin-top: 4px; padding: 0 4px; }
+  .msg.user .msg-time { text-align: right; }
+  .chat-input-wrap { padding: 12px 16px; border-top: 1px solid var(--border); background: var(--surface); display: flex; gap: 8px; align-items: flex-end; }
+  .chat-input { flex: 1; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-family: var(--font); font-size: 13.5px; resize: none; min-height: 42px; max-height: 120px; outline: none; background: var(--surface); color: var(--text); line-height: 1.5; }
+  .chat-input:focus { border-color: var(--accent); }
+  .chat-send { width: 38px; height: 38px; border-radius: 9px; background: var(--blue); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.15s; }
+  .chat-send:hover { background: var(--blue-mid); }
+  .chat-send svg { width: 16px; height: 16px; fill: white; }
+  .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+  .typing-indicator { display: flex; gap: 4px; padding: 8px 12px; }
+  .typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); animation: typing 1.2s ease-in-out infinite; }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.9); } 40% { opacity: 1; transform: scale(1.1); } }
+
+  /* ── Settings ── */
+  .settings-grid { display: grid; gap: 14px; }
+  .setting-row { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 13.5px; font-weight: 500; color: var(--text); }
+  .setting-desc { font-size: 11.5px; color: var(--text3); margin-top: 2px; }
+  input[type="text"], select { border: 1px solid var(--border); border-radius: 7px; padding: 8px 12px; font-family: var(--font); font-size: 13px; background: var(--surface); color: var(--text); outline: none; width: 100%; transition: border-color 0.15s; }
+  input[type="text"]:focus, select:focus { border-color: var(--accent); }
+
+  /* ── Spinner / loader ── */
+  .loader { display: flex; align-items: center; gap: 10px; padding: 16px; font-size: 13px; color: var(--text2); }
+  .spinner { width: 20px; height: 20px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Toasts ── */
+  .toast-wrap { position: fixed; bottom: 20px; right: 20px; z-index: 999; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 12px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; animation: slideIn 0.2s ease; }
+  .toast.success { background: var(--green); color: white; }
+  .toast.error { background: var(--red); color: white; }
+  .toast.info { background: var(--blue); color: white; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* ── Transcript box ── */
+  .transcript-box { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; font-size: 13px; line-height: 1.7; color: var(--text2); max-height: 120px; overflow-y: auto; font-style: italic; }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--text3); }
+  .empty-state svg { width: 48px; height: 48px; opacity: 0.3; margin-bottom: 16px; }
+  .empty-state p { font-size: 14px; }
+
+  .pr-error { background: var(--red-light); color: var(--red); border: 1px solid #f5c6c6; border-radius: 8px; padding: 12px 14px; font-size: 13px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- Header -->
+  <header class="header">
+    <div class="header-logo">
+      <svg viewBox="0 0 24 24"><path d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h14a2 2 0 002-2V6a2 2 0 00-2-2h-4M9 4a1 1 0 011-1h4a1 1 0 011 1v1H9V4zM9 12l2 2 4-4"/></svg>
+    </div>
+    <span class="header-title">ИИ-помощник Lean</span>
+    <span class="header-sub">Документооборот отдела улучшений</span>
+    <div class="header-right">
+      <div class="status-dot" id="status-dot"></div>
+      <span class="status-label" id="status-label">Подключение...</span>
+      <span class="model-badge" id="model-badge">—</span>
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Создать</div>
+      <button class="sidebar-btn active" onclick="showPanel('generate')" id="nav-generate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Новый документ
+      </button>
+      <button class="sidebar-btn" onclick="showPanel('chat')" id="nav-chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        Диалог с ИИ
+      </button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Инструменты</div>
+      <button class="sidebar-btn" onclick="showPanel('settings')" id="nav-settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Настройки
+      </button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-history">
+      <div class="sidebar-label" style="padding: 0; margin-bottom: 8px;">История</div>
+      <div id="history-list">
+        <div style="font-size: 12px; color: var(--text3); padding: 8px 4px;">Документы появятся здесь</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="tabs">
+      <div class="tab active" id="tab-generate" onclick="switchTab('generate')">Создать документ</div>
+      <div class="tab" id="tab-chat" onclick="switchTab('chat')" style="display:none">Диалог</div>
+      <div class="tab" id="tab-settings" onclick="switchTab('settings')" style="display:none">Настройки</div>
+    </div>
+
+    <!-- Panel: Generate -->
+    <div class="panel active" id="panel-generate">
+      <div style="max-width: 760px; margin: 0 auto;">
+
+        <!-- Step indicator -->
+        <div class="steps" id="steps">
+          <div class="step active" id="step1"><div class="step-num">1</div><span>Тип документа</span></div>
+          <div class="step-line"></div>
+          <div class="step" id="step2"><div class="step-num">2</div><span>Ввод данных</span></div>
+          <div class="step-line"></div>
+          <div class="step" id="step3"><div class="step-num">3</div><span>Результат</span></div>
+        </div>
+
+        <!-- Doc type -->
+        <div class="card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6M9 16h6M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/></svg>
+            Выберите тип документа
+          </div>
+          <div class="doc-type-grid">
+            <button class="doc-type-btn selected" onclick="selectDocType('protocol', this)">
+              <div class="dtb-icon">📋</div>
+              <div class="dtb-title">Протокол сессии</div>
+              <div class="dtb-desc">Решение проблем, мозговой штурм, план действий</div>
+            </button>
+            <button class="doc-type-btn" onclick="selectDocType('passport', this)">
+              <div class="dtb-icon">📁</div>
+              <div class="dtb-title">Паспорт проекта</div>
+              <div class="dtb-desc">AS-IS / TO-BE, эффект, сроки, ответственные</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Input -->
+        <div class="card">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            Введите данные
+          </div>
+
+          <!-- Audio upload -->
+          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('audio-input').click()" ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="this.classList.remove('dragover')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block;margin:0 auto 8px"><path d="M12 18.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13zM12 8v4M12 12l2-2M12 12l-2-2"/><path d="M19 19l-1.5-1.5M5 19l1.5-1.5M12 2v2M2 12h2M20 12h2"/></svg>
+            <div class="uz-title" id="upload-title">Загрузить аудиозапись сессии</div>
+            <div class="uz-sub">MP3, WAV, OGG, M4A — до 100 МБ. Нажмите или перетащите файл</div>
+          </div>
+          <input type="file" id="audio-input" accept="audio/*" onchange="handleAudioFile(this.files[0])">
+
+          <div id="transcribing-loader" style="display:none" class="loader">
+            <div class="spinner"></div>
+            <span>Транскрибирую аудио (Whisper)...</span>
+          </div>
+
+          <div id="transcript-wrap" style="display:none; margin: 12px 0 8px;">
+            <div style="font-size: 12px; color: var(--text3); margin-bottom: 6px;">Транскрипт аудио:</div>
+            <div class="transcript-box" id="transcript-box"></div>
+          </div>
+
+          <div style="text-align: center; font-size: 12px; color: var(--text3); margin: 14px 0 10px;">— или введите текст вручную —</div>
+
+          <textarea id="main-input" placeholder="Опишите сессию или инициативу...&#10;&#10;Например: 'Сессия 15.01.2025. Участники: Иванов, Петров, Сидорова. Проблема — задержка отгрузки на склад №3 из-за неисправности конвейера. Предложено: заменить подшипники, ввести ежедневный осмотр. Ответственный — мастер Петров, срок — 20.01.2025...'"></textarea>
+
+          <div class="btn-row" style="margin-top: 12px;">
+            <button class="btn btn-primary" onclick="analyzeText()" id="analyze-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              Сгенерировать документ
+            </button>
+            <button class="btn btn-secondary" onclick="clearAll()">Очистить</button>
+          </div>
+        </div>
+
+        <!-- Result -->
+        <div id="result-section" style="display:none">
+          <div class="result-card">
+            <div class="result-header">
+              <div class="result-title" id="result-title">Документ сформирован</div>
+              <div class="btn-row">
+                <button class="btn btn-success btn-sm" onclick="downloadDocx()" id="download-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                  Скачать DOCX
+                </button>
+                <button class="btn btn-secondary btn-sm" onclick="copyToChat()">→ В диалог</button>
+              </div>
+            </div>
+            <div class="result-body" id="result-body"></div>
+          </div>
+        </div>
+
+        <div id="analyze-loader" style="display:none" class="loader">
+          <div class="spinner"></div>
+          <span id="analyze-loader-text">Анализирую текст...</span>
+        </div>
+
+        <div id="error-box" style="display:none" class="pr-error"></div>
+
+      </div>
+    </div>
+
+    <!-- Panel: Chat -->
+    <div class="panel" id="panel-chat">
+      <div class="chat-wrap" style="height: calc(100vh - 56px - 49px);">
+        <div class="chat-doc-selector">
+          <label>Тип документа:</label>
+          <select id="chat-doc-type">
+            <option value="protocol">Протокол сессии</option>
+            <option value="passport">Паспорт проекта</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="clearChat()">Новый диалог</button>
+          <button class="btn btn-primary btn-sm" onclick="generateFromChat()" id="gen-from-chat-btn" style="margin-left:auto">Сгенерировать документ ↗</button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+            <p>Начните диалог. ИИ поможет собрать<br>все данные для документа.</p>
+          </div>
+        </div>
+        <div class="chat-input-wrap">
+          <textarea class="chat-input" id="chat-input" placeholder="Введите сообщение..." rows="1" onkeydown="chatKeydown(event)" oninput="autoResize(this)"></textarea>
+          <button class="chat-send" onclick="sendChatMessage()" id="chat-send-btn">
+            <svg viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel: Settings -->
+    <div class="panel" id="panel-settings">
+      <div style="max-width: 640px; margin: 0 auto;">
+        <div class="card">
+          <div class="card-title">⚙️ Настройки подключения</div>
+          <div class="settings-grid">
+            <div class="setting-row">
+              <div><div class="setting-label">Ollama URL</div><div class="setting-desc">Адрес LLM-сервера</div></div>
+              <input type="text" id="s-ollama-url" value="http://localhost:11434">
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Модель LLM</div><div class="setting-desc">Qwen2.5, Saiga, Llama 3.1...</div></div>
+              <select id="s-model">
+                <option value="qwen2.5:7b">qwen2.5:7b (рекомендуется)</option>
+                <option value="qwen2.5:14b">qwen2.5:14b</option>
+                <option value="IlyaGusev/saiga_llama3_8b">saiga_llama3_8b</option>
+                <option value="llama3.1:8b">llama3.1:8b</option>
+                <option value="mistral:7b">mistral:7b</option>
+                <option value="custom">Другая...</option>
+              </select>
+            </div>
+            <div class="setting-row" id="custom-model-row" style="display:none">
+              <div><div class="setting-label">Название модели</div><div class="setting-desc">Точное название из Ollama</div></div>
+              <input type="text" id="s-custom-model" placeholder="model:tag">
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-label">Backend URL</div><div class="setting-desc">Адрес FastAPI сервера</div></div>
+              <input type="text" id="s-backend-url" value="">
+            </div>
+          </div>
+          <div style="margin-top: 16px;" class="btn-row">
+            <button class="btn btn-primary" onclick="saveSettings()">Сохранить</button>
+            <button class="btn btn-secondary" onclick="testConnection()">Проверить подключение</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📋 Состояние системы</div>
+          <div id="system-status">
+            <div class="loader"><div class="spinner"></div><span>Проверка...</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">📖 Быстрый старт</div>
+          <div style="font-size: 13px; line-height: 1.8; color: var(--text2);">
+            <p style="margin-bottom: 10px;">1. Установите <strong>Ollama</strong>: <code style="font-family: var(--mono); background: var(--surface2); padding: 1px 6px; border-radius: 4px;">ollama.com</code></p>
+            <p style="margin-bottom: 10px;">2. Загрузите модель: <code style="font-family: var(--mono); background: var(--surface2); padding: 1px 6px; border-radius: 4px;">ollama pull qwen2.5:7b</code></p>
+            <p style="margin-bottom: 10px;">3. Запустите бэкенд: <code style="font-family: var(--mono); background: var(--surface2); padding: 1px 6px; border-radius: 4px;">uvicorn main:app --reload</code></p>
+            <p>4. Или через Docker: <code style="font-family: var(--mono); background: var(--surface2); padding: 1px 6px; border-radius: 4px;">docker-compose up -d</code></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toasts -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+const state = {
+  docType: 'protocol',
+  transcript: '',
+  lastResult: null,
+  chatHistory: [],
+  backendUrl: localStorage.getItem('backendUrl') || '',
+  model: localStorage.getItem('model') || 'qwen2.5:7b',
+  ollamaUrl: localStorage.getItem('ollamaUrl') || 'http://localhost:11434',
+  history: JSON.parse(localStorage.getItem('docHistory') || '[]'),
+};
+
+// ── API ────────────────────────────────────────────────────────────────────────
+function apiBase() {
+  return state.backendUrl || '';
+}
+
+async function apiFetch(path, opts = {}) {
+  const url = apiBase() + path;
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const txt = await r.text().catch(() => r.statusText);
+    throw new Error(`${r.status}: ${txt}`);
+  }
+  return r;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  checkHealth();
+  renderHistory();
+  document.getElementById('s-model').addEventListener('change', function() {
+    document.getElementById('custom-model-row').style.display =
+      this.value === 'custom' ? 'grid' : 'none';
+  });
+});
+
+async function checkHealth() {
+  try {
+    const r = await apiFetch('/health');
+    const data = await r.json();
+    document.getElementById('status-dot').className = 'status-dot';
+    document.getElementById('status-label').textContent = 'Онлайн';
+    document.getElementById('model-badge').textContent = data.model || state.model;
+    renderSystemStatus(data);
+  } catch {
+    document.getElementById('status-dot').className = 'status-dot offline';
+    document.getElementById('status-label').textContent = 'Не подключено';
+    renderSystemStatus(null);
+  }
+}
+
+function renderSystemStatus(data) {
+  const el = document.getElementById('system-status');
+  if (!data) {
+    el.innerHTML = `<div class="pr-error">Бэкенд недоступен. Запустите FastAPI сервер и проверьте настройки.</div>`;
+    return;
+  }
+  const row = (label, ok, note = '') => `
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;">
+      <span style="color:${ok ? 'var(--green)' : 'var(--red)'};font-size:16px;">${ok ? '✓' : '✗'}</span>
+      <span style="flex:1;color:var(--text);">${label}</span>
+      <span style="color:var(--text3);font-size:12px;font-family:var(--mono);">${note}</span>
+    </div>`;
+  el.innerHTML = `
+    ${row('FastAPI Backend', true, 'v1.0.0')}
+    ${row('LLM (Ollama)', data.ollama, data.model || '—')}
+    ${row('Speech-to-Text (Whisper)', data.whisper, data.whisper_model || '—')}
+    ${row('Генерация DOCX', data.docx, 'python-docx')}
+  `;
+}
+
+// ── Panel nav ─────────────────────────────────────────────────────────────────
+function showPanel(name) {
+  ['generate','chat','settings'].forEach(n => {
+    document.getElementById(`nav-${n}`)?.classList.toggle('active', n === name);
+    document.getElementById(`tab-${n}`)?.classList.toggle('active', n === name);
+  });
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`panel-${name}`)?.classList.add('active');
+}
+
+function switchTab(name) { showPanel(name); }
+
+// ── Doc type ──────────────────────────────────────────────────────────────────
+function selectDocType(type, el) {
+  state.docType = type;
+  document.querySelectorAll('.doc-type-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  const input = document.getElementById('main-input');
+  if (type === 'protocol') {
+    input.placeholder = 'Опишите сессию решения проблем...\n\nНапример: "Сессия 15.01.2025. Участники: Иванов, Петров. Проблема — задержка отгрузки. Решение — заменить конвейер. Ответственный — Петров, срок 20.01..."';
+  } else {
+    input.placeholder = 'Опишите инициативу или проект улучшений...\n\nНапример: "Хотим внедрить 6С на участке сборки. Сейчас беспорядок, теряем 30 мин/смену на поиск инструмента. Эффект — 90 мин/день. Срок — 2 месяца. Рук. — Сидорова..."';
+  }
+}
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.add('dragover');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('audio/')) handleAudioFile(file);
+  else showToast('Пожалуйста, перетащите аудиофайл', 'error');
+}
+
+async function handleAudioFile(file) {
+  if (!file) return;
+  document.getElementById('upload-title').textContent = `${file.name} (${(file.size/1024/1024).toFixed(1)} МБ)`;
+  document.getElementById('transcribing-loader').style.display = 'flex';
+  document.getElementById('transcript-wrap').style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await apiFetch('/transcribe', { method: 'POST', body: fd });
+    const data = await r.json();
+    state.transcript = data.text;
+    document.getElementById('transcript-box').textContent = data.text;
+    document.getElementById('transcript-wrap').style.display = 'block';
+    document.getElementById('main-input').value = data.text;
+    showToast('Аудио транскрибировано успешно', 'success');
+  } catch (e) {
+    showToast('Ошибка транскрибации: ' + e.message, 'error');
+  } finally {
+    document.getElementById('transcribing-loader').style.display = 'none';
+  }
+}
+
+// ── Analyze ───────────────────────────────────────────────────────────────────
+async function analyzeText() {
+  const text = document.getElementById('main-input').value.trim();
+  if (!text) { showToast('Введите текст или загрузите аудио', 'error'); return; }
+
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('analyze-loader').style.display = 'flex';
+  document.getElementById('result-section').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+
+  const steps = ['Анализирую текст...', 'Извлекаю данные...', 'Формирую документ...'];
+  let si = 0;
+  const loaderText = document.getElementById('analyze-loader-text');
+  const stepTimer = setInterval(() => {
+    si = (si + 1) % steps.length;
+    loaderText.textContent = steps[si];
+  }, 3000);
+
+  try {
+    const r = await apiFetch('/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, doc_type: state.docType })
+    });
+    const resp = await r.json();
+    state.lastResult = resp;
+    renderResult(resp);
+    addToHistory(resp, text);
+    updateStep(3);
+    showToast('Документ сформирован!', 'success');
+  } catch (e) {
+    const box = document.getElementById('error-box');
+    box.style.display = 'block';
+    box.textContent = 'Ошибка: ' + e.message + '. Убедитесь, что бэкенд запущен и Ollama работает.';
+    showToast('Ошибка генерации', 'error');
+  } finally {
+    clearInterval(stepTimer);
+    document.getElementById('analyze-btn').disabled = false;
+    document.getElementById('analyze-loader').style.display = 'none';
+  }
+}
+
+function renderResult(resp) {
+  const data = resp.data;
+  if (!data || data.parse_error) {
+    document.getElementById('result-body').innerHTML = `<pre style="font-size:12px;white-space:pre-wrap;font-family:var(--mono)">${data?.raw || 'Нет данных'}</pre>`;
+  } else if (resp.doc_type === 'protocol') {
+    renderProtocol(data);
+  } else {
+    renderPassport(data);
+  }
+  document.getElementById('result-title').textContent =
+    resp.doc_type === 'protocol' ? '📋 Протокол сессии решения проблем' : '📁 Паспорт проекта';
+  document.getElementById('result-section').style.display = 'block';
+  document.getElementById('result-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function field(label, value) {
+  if (!value || (Array.isArray(value) && value.length === 0)) return '';
+  let v;
+  if (Array.isArray(value)) {
+    v = `<ul class="field-value list">${value.map(i => `<li>${i}</li>`).join('')}</ul>`;
+  } else {
+    v = `<div class="field-value">${value}</div>`;
+  }
+  return `<div class="field-row"><div class="field-label">${label}</div>${v}</div>`;
+}
+
+function renderProtocol(d) {
+  const actions = d.actions || [];
+  let actTable = '';
+  if (actions.length) {
+    actTable = `<table class="field-value table" style="width:100%;border-collapse:collapse;">
+      <tr><th>Задача</th><th>Ответственный</th><th>Срок</th></tr>
+      ${actions.map(a => `<tr><td>${a.task||''}</td><td>${a.responsible||''}</td><td>${a.deadline||''}</td></tr>`).join('')}
+    </table>`;
+  }
+  document.getElementById('result-body').innerHTML = `
+    ${field('Дата сессии', d.date)}
+    ${field('Участники', d.participants)}
+    ${field('Проблема', d.problem)}
+    ${field('Корневые причины', d.root_causes)}
+    ${field('Решения', d.solutions)}
+    <div class="field-row"><div class="field-label">План действий</div>${actTable || '<div class="field-value">—</div>'}</div>
+    ${field('Ожидаемый эффект', d.expected_effect)}
+    ${field('Следующие шаги', d.next_steps)}
+  `;
+}
+
+function renderPassport(d) {
+  document.getElementById('result-body').innerHTML = `
+    ${field('Краткое наименование', d.project_name)}
+    ${field('Полное наименование', d.full_name)}
+    ${field('Категория', d.category)}
+    ${field('Руководитель', d.project_manager)}
+    ${field('Срок реализации', d.timeline)}
+    ${field('Цель', d.goal)}
+    ${field('Описание проблемы', d.problem_description)}
+    ${field('Текущее состояние (AS-IS)', d.current_state)}
+    ${field('Целевое состояние (TO-BE)', d.target_state)}
+    ${field('Экономический эффект', d.economic_effect)}
+    ${field('Ресурсы', d.resources)}
+    ${field('Риски', d.risks)}
+    ${field('Метрики успеха', d.success_metrics)}
+  `;
+}
+
+// ── Download DOCX ──────────────────────────────────────────────────────────────
+async function downloadDocx() {
+  if (!state.lastResult) return;
+  const btn = document.getElementById('download-btn');
+  btn.disabled = true;
+  btn.textContent = 'Подготовка...';
+  try {
+    const fd = new FormData();
+    fd.append('data', JSON.stringify(state.lastResult.data));
+    fd.append('doc_type', state.lastResult.doc_type);
+    const r = await apiFetch('/generate-docx', { method: 'POST', body: fd });
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = state.lastResult.doc_type === 'protocol'
+      ? `protocol_${new Date().toISOString().slice(0,10)}.docx`
+      : `passport_${new Date().toISOString().slice(0,10)}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Файл скачан!', 'success');
+  } catch (e) {
+    showToast('Ошибка скачивания: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Скачать DOCX`;
+  }
+}
+
+// ── Chat ───────────────────────────────────────────────────────────────────────
+const chatHistory = [];
+
+function clearChat() {
+  chatHistory.length = 0;
+  document.getElementById('chat-messages').innerHTML = `
+    <div class="empty-state">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <p>Начните диалог. ИИ поможет собрать<br>все данные для документа.</p>
+    </div>`;
+}
+
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function appendMsg(role, text) {
+  const wrap = document.getElementById('chat-messages');
+  // убираем empty state
+  const empty = wrap.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const time = new Date().toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="msg-bubble">${text.replace(/\n/g, '<br>')}</div>
+    <div class="msg-time">${time}</div>
+  `;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+function showTyping() {
+  const wrap = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg assistant';
+  div.id = 'typing-bubble';
+  div.innerHTML = `<div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function removeTyping() {
+  document.getElementById('typing-bubble')?.remove();
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+
+  appendMsg('user', text);
+  chatHistory.push({ role: 'user', content: text });
+
+  document.getElementById('chat-send-btn').disabled = true;
+  showTyping();
+
+  try {
+    const r = await apiFetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: chatHistory,
+        doc_type: document.getElementById('chat-doc-type').value
+      })
+    });
+    const data = await r.json();
+    removeTyping();
+    appendMsg('assistant', data.reply);
+    chatHistory.push({ role: 'assistant', content: data.reply });
+  } catch (e) {
+    removeTyping();
+    appendMsg('assistant', '⚠️ Ошибка: ' + e.message);
+  } finally {
+    document.getElementById('chat-send-btn').disabled = false;
+  }
+}
+
+async function generateFromChat() {
+  if (chatHistory.length === 0) { showToast('Сначала проведите диалог', 'error'); return; }
+  const combined = chatHistory.map(m => `${m.role === 'user' ? 'Пользователь' : 'ИИ'}: ${m.content}`).join('\n\n');
+  document.getElementById('main-input').value = combined;
+  state.docType = document.getElementById('chat-doc-type').value;
+  document.querySelectorAll('.doc-type-btn').forEach((b, i) => {
+    b.classList.toggle('selected', (i === 0 && state.docType === 'protocol') || (i === 1 && state.docType === 'passport'));
+  });
+  showPanel('generate');
+  setTimeout(analyzeText, 300);
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+function addToHistory(resp, text) {
+  const item = {
+    id: Date.now(),
+    date: new Date().toLocaleDateString('ru'),
+    type: resp.doc_type,
+    title: resp.doc_type === 'protocol'
+      ? (resp.data?.problem || text).slice(0, 60)
+      : (resp.data?.project_name || text).slice(0, 60),
+    data: resp
+  };
+  state.history.unshift(item);
+  if (state.history.length > 20) state.history.pop();
+  localStorage.setItem('docHistory', JSON.stringify(state.history));
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = document.getElementById('history-list');
+  if (!state.history.length) return;
+  el.innerHTML = state.history.map(item => `
+    <div class="history-item" onclick="loadHistoryItem(${item.id})">
+      <div class="hi-date">${item.date}</div>
+      <span class="hi-type ${item.type}">${item.type === 'protocol' ? 'Протокол' : 'Паспорт'}</span>
+      ${item.title}...
+    </div>
+  `).join('');
+}
+
+function loadHistoryItem(id) {
+  const item = state.history.find(h => h.id === id);
+  if (!item) return;
+  state.lastResult = item.data;
+  state.docType = item.data.doc_type;
+  renderResult(item.data);
+  showPanel('generate');
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function loadSettings() {
+  document.getElementById('s-backend-url').value = state.backendUrl;
+  document.getElementById('s-ollama-url').value = state.ollamaUrl;
+  const modelSel = document.getElementById('s-model');
+  const known = [...modelSel.options].map(o => o.value);
+  if (known.includes(state.model)) {
+    modelSel.value = state.model;
+  } else {
+    modelSel.value = 'custom';
+    document.getElementById('custom-model-row').style.display = 'grid';
+    document.getElementById('s-custom-model').value = state.model;
+  }
+}
+
+function saveSettings() {
+  const modelSel = document.getElementById('s-model');
+  const model = modelSel.value === 'custom'
+    ? document.getElementById('s-custom-model').value.trim()
+    : modelSel.value;
+  state.backendUrl = document.getElementById('s-backend-url').value.trim().replace(/\/$/, '');
+  state.ollamaUrl = document.getElementById('s-ollama-url').value.trim();
+  state.model = model;
+  localStorage.setItem('backendUrl', state.backendUrl);
+  localStorage.setItem('ollamaUrl', state.ollamaUrl);
+  localStorage.setItem('model', model);
+  showToast('Настройки сохранены', 'success');
+  checkHealth();
+}
+
+async function testConnection() {
+  showToast('Проверяю подключение...', 'info');
+  await checkHealth();
+}
+
+// ── Steps ──────────────────────────────────────────────────────────────────────
+function updateStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById(`step${i}`);
+    el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+  }
+}
+
+// ── Misc ───────────────────────────────────────────────────────────────────────
+function clearAll() {
+  document.getElementById('main-input').value = '';
+  document.getElementById('result-section').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+  document.getElementById('transcript-wrap').style.display = 'none';
+  document.getElementById('upload-title').textContent = 'Загрузить аудиозапись сессии';
+  document.getElementById('audio-input').value = '';
+  state.transcript = '';
+  state.lastResult = null;
+  updateStep(1);
+}
+
+function copyToChat() {
+  if (!state.lastResult) return;
+  const text = JSON.stringify(state.lastResult.data, null, 2);
+  document.getElementById('chat-input').value = `Вот извлечённые данные:\n${text}\n\nЧто можно уточнить?`;
+  showPanel('chat');
+  document.getElementById('chat-input').focus();
+}
+
+// ── Toasts ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const wrap = document.getElementById('toast-wrap');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  const icons = { success: '✓', error: '✗', info: 'ℹ' };
+  t.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+  wrap.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+</script>
+</body>
+</html>
